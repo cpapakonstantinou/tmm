@@ -36,21 +36,22 @@ const char* usage = \
 	"usage: tmm [opts]\n"
 	"\nGeneral Control:\n"
 	"\t-d, --device         <type>             Devices supported: 'bragg' \n"
-	"\t-l, --wavelength     <val>[,...]        Wavelength(s) in microns\n"
+	"\t-l, --wavelength     <val>[,...]        Wavelength(s) \n"
+	"\t--dl     			<val>		       Group delay wavelength interval \n"
 	"\nBragg Control:\n"
-	"\t-p, --period         <val>[,...]        Grating period(s) in microns\n"
+	"\t-p, --period         <val>[,...]        Grating period(s) \n"
 	"\t-c, --dutycycle      <val>[,...]        Dutycycle(s) 0-1\n"
 	"\t-N, --n-periods      <val>[,...]        Number of periods\n"
 	"\tConstant or Sampled Values:\n"
 	"\t--n1                 <val>[,...]        Refractive index for high index region\n"
 	"\t--n2                 <val>[,...]        Refractive index for low index region\n"
-	"\t-a, --loss           <val>[,...]        Loss in dB/cm\n"
+	"\t-a, --loss           <val>[,...]        Loss\n"
 	"\tTaylor Expansion Models:\n"
 	"\t--n1-model           <l0,a0,a1,a2,...>  n1(l) = a0 - a1*(l-l0) - a2*(l-l0)^2\n"
 	"\t--n2-model           <l0,a0,a1,a2,...>  n2(l) = a0 - a1*(l-l0) - a2*(l-l0)^2\n"
 	"\t--loss-model         <a0,a1,a2,...>     loss(l) = a0 - a1*(l-l0) - a2*(l-l0)^2\n"
-	"\t--w1                 <val>[,...]        Width(s) for high-index region (um)\n"
-	"\t--w2                 <val>[,...]        Width(s) for low-index region (um)\n"
+	"\t--w1                 <val>[,...]        Width(s) for high-index region\n"
+	"\t--w2                 <val>[,...]        Width(s) for low-index region\n"
 	"\t--n1-width-model     <w0,b0,b1,b2,b3,...>  dn1(w) = b1*(w-w0) + b2*(w-w0)^2 + b3*(w-w0)^3\n"
 	"\t--n2-width-model     <w0,b0,b1,b2,b3,...>  dn2(w) = b1*(w-w0) + b2*(w-w0)^2 + b3*(w-w0)^3\n"
 	"\t**if using --n#-model and --n#-width-model together specify b0 as 0.0";
@@ -77,6 +78,7 @@ int main(int argc, char* argv[])
 			{"w2",				required_argument, 0, 7},
 			{"n1-width-model",	required_argument, 0, 8},
 			{"n2-width-model",	required_argument, 0, 9},
+			{"dl",				required_argument, 0, 10},
 			{"help",			no_argument,       0, 'h'},
 			{0, 0, 0, 0}
 		};
@@ -211,6 +213,12 @@ int main(int argc, char* argv[])
 					}
 					break;
 				}
+				case 10: // --dl
+				{
+					char* end = nullptr;
+					ctx->dl = std::strtod(optarg, &end);
+					break;
+				}
 				case 'a': // --loss
 				{
 					std::vector<double> loss;
@@ -278,6 +286,17 @@ int main(int argc, char* argv[])
 			cerr << "[ERROR] setup: supported devices: 'bragg'." << endl;
 			return -1;
 		}
+
+		if(ctx->dl == 0) 
+		{
+			cerr << "[WARN] setup: group delay: wavelength interval=0, ignored" << endl;
+		}
+
+		if(ctx->dl != 0
+			&& (ctx->n1->sampled || ctx->n2->sampled || ctx->loss->sampled) ) 
+		{
+			cerr << "[WARN] setup: group delay: not supported for sampled data" << endl;
+		}
 	
 		if (ctx->device == BRAGG && ctx->periods.empty())
 		{
@@ -327,11 +346,14 @@ int main(int argc, char* argv[])
 		{
 			bool sweep_width1 = !ctx->width1.empty();
 			bool sweep_width2 = !ctx->width2.empty();
+			bool analyze_group_delay = ctx->dl;
 			
 			printf("period,duty_cycle,N,wavelength");
 			if (sweep_width1) printf(",w1");
 			if (sweep_width2) printf(",w2");
-			printf(",n1,n2,loss_dBcm,R,T\n");
+			printf(",n1,n2,loss,R,T,phase_r,phase_t");
+			if (ctx->dl) printf(",group_delay");
+			printf("\n");
 
 			for (const auto& period : ctx->periods)
 			{
@@ -339,7 +361,7 @@ int main(int argc, char* argv[])
 				{
 					for (const auto& N : ctx->Ns)
 					{
-						Bragg grating(period * 1e-6, duty_cycle, N);  // Convert um to m
+						Bragg grating(period, duty_cycle, N);
 
 						const auto& w1_list = sweep_width1 ? ctx->width1 : std::vector<double>{0.0};
 						const auto& w2_list = sweep_width2 ? ctx->width2 : std::vector<double>{0.0};
@@ -353,24 +375,50 @@ int main(int argc, char* argv[])
 								{
 									double n1_val = (*ctx->n1)(wavelength, w1, idx);
 									double n2_val = (*ctx->n2)(wavelength, w2, idx);
-									double loss_dBcm = (*ctx->loss)(wavelength, 0.0, idx);
-									
-									// Convert loss from dB/cm to 1/m
-									double loss_per_m = from_db(loss_dBcm) * 100;
+									double loss_val = (*ctx->loss)(wavelength, 0.0, idx);
+									double gdelay_val = 0;
 
 									// Compute reflection and transmission
-									auto [R, T] = grating.scattering_coefficients(
-										wavelength * 1e-6,  // Convert um to m
+									auto [R, T, r, t] = grating.scattering_coefficients(
+										wavelength,
 										n1_val, 
 										n2_val, 
-										loss_per_m
+										loss_val
 									);
+									
+									//todo: support sampled data
+									if( analyze_group_delay 
+										&& !ctx->n1->sampled 
+											&& !ctx->n2->sampled 
+												&& !ctx->loss->sampled)
+									{
+										auto dwb = wavelength - ctx->dl; //backward difference
+										auto dwf = wavelength + ctx->dl; //forward difference
+
+										auto [Rb, Tb, rb, tb] = grating.scattering_coefficients(
+											dwb, 
+											(*ctx->n1)(dwb, w1, idx), 
+											(*ctx->n2)(dwb, w2, idx), 
+											loss_val
+										);
+
+										auto [Rf, Tf, rf, tf] = grating.scattering_coefficients(
+											dwf,
+											(*ctx->n1)(dwf, w1, idx), 
+											(*ctx->n2)(dwf, w2, idx), 
+											loss_val
+										);
+										//group delay of transmission 
+										gdelay_val = group_delay(tb, tf, dwb, dwf);
+									}
 
 									// Print results
 									printf("%.6g,%.6g,%.6g,%.6g", period, duty_cycle, N, wavelength);
 									if (sweep_width1) printf(",%.6g", w1);
 									if (sweep_width2) printf(",%.6g", w2);
-									printf(",%.6g,%.6g,%.6g,%.6g,%.6g\n", n1_val, n2_val, loss_dBcm, R, T);
+									printf(",%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g", n1_val, n2_val, loss_val, R, T, r, t);
+									if (analyze_group_delay) printf(",%.6g", gdelay_val);
+									printf("\n");
 
 									idx++;
 								}

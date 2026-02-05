@@ -79,9 +79,9 @@ namespace tmm
 		 * \param n1 Effective index in first section
 		 * \param n2 Effective index in second section
 		 * \param loss Loss in 1/m
-		 * \returns reflection and transmission coefficients
+		 * \returns reflection and transmission coefficients and phases
 		 */
-		std::tuple<double, double> scattering_coefficients(double wavelength, double n1, double n2, double loss);
+		std::tuple<double, double, double, double> scattering_coefficients(double wavelength, double n1, double n2, double loss);
 		
 	};
 }//namespace tmm

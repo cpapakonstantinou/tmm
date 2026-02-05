@@ -63,6 +63,9 @@ namespace tmm
 		
 		//Device type
 		device_t device = BRAGG; ///< Device type
+
+		//Analysis
+		double dl; ///< Wavelength window for calculating group delay
 	};
 
 	/**

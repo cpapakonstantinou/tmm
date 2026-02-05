@@ -184,7 +184,7 @@ namespace tmm
 			for (size_t j = 0; j < 2; ++j)
 				TN[i][j] = result[i][j];
 	}
-	
+
 	/**
 	 * \brief Extract reflection and transmission from S-matrix
 	 * 
@@ -195,16 +195,20 @@ namespace tmm
 	 * \param S 2x2 scattering matrix
 	 * \param R Output reflection coefficient
 	 * \param T Output transmission coefficient
+	 * \param r reflection phase
+	 * \param t transmission phase
 	 */
-	inline void scattering_coefficients_db(std::complex<double>** S, double& R, double& T)
+	inline void scattering_coefficients(std::complex<double>** S, double& R, double& T, double& r, double& t)
 	{
 		std::complex<double> S00 = S[0][0];
 		std::complex<double> S10 = S[1][0];
 		
 		R = std::pow(std::abs(S10 / S00), 2.0);
 		T = std::pow(std::abs(1.0 / S00), 2.0);
+		r = std::arg(S10 / S00);
+		t = std::arg(1.0 / S00);
 	}
-	
+		
 	/**
 	 * \brief Convert linear to decibels
 	 */
@@ -219,6 +223,38 @@ namespace tmm
 	inline double from_db(double db)
 	{
 		return std::log(10.0) * db / 10.0;
+	}
+
+	/**
+	 * \brief Compute group delay from phase derivative
+	 * 
+	 * Calculate group delay using a central difference derivative
+	 * 
+	 * \param phase1 Phase at wavelength[i-1]
+	 * \param phase2 Phase at wavelength[i+1]
+	 * \param wavelength1 wavelength[i-1]
+	 * \param wavelength2 wavelength[i+1]
+	 * \return Group delay
+	 */
+	inline double group_delay(double phase1, double phase2, double wavelength1, double wavelength2)
+	{
+		// Central wavelength
+		double lambda = (wavelength1 + wavelength2) / 2.0;
+		double dlambda = wavelength2 - wavelength1;
+		
+		// Unwrapped phase
+		double dphi = phase2 - phase1;
+		
+		// wrap to [- pi ,  pi ]
+		while (dphi > pi) dphi -= 2.0 * pi;
+		while (dphi < -pi) dphi += 2.0 * pi;
+		
+		// dphi/dl
+		double dphi_dlambda = dphi / dlambda;
+		
+		double delay = -(std::pow(lambda, 2)) / (2.0 * pi * c) * dphi_dlambda;
+		
+		return delay;
 	}
 	
 } // namespace tmm

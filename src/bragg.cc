@@ -76,18 +76,18 @@ namespace tmm
 		matrix_power(Tp.get(), T, _N);
 	}
 
-	std::tuple<double, double>
+	std::tuple<double, double, double, double>
 	Bragg::scattering_coefficients(double wavelength, double n1, double n2, double loss)
 	{
 		auto sparams = damm::aligned_alloc_2D<std::complex<double>, 64>(2, 2);
 		
 		scattering_matrix(sparams.get(), wavelength, n1, n2, loss);
 
-		double R, T;
+		double R, T, r, t;
 
-		scattering_coefficients_db(sparams.get(), R, T);
+		tmm::scattering_coefficients(sparams.get(), R, T, r, t);
 
-		return std::make_tuple(R, T);
+		return std::make_tuple(R, T, r, t);
 	}
 
 
