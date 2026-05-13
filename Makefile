@@ -22,9 +22,9 @@ LD = $(CXX)
 
 #Compile Options
 OPT=-O3
-CXXFLAGS = -g -std=c++23 $(OPT) -march=native -I$(INCDIR) -I /usr/lib/damm
-LDFLAGS = -L /usr/lib/damm
-LDLIBS = -ldamm
+CXXFLAGS = -g -std=c++23 $(OPT) -march=native -I$(INCDIR) -I /usr/include/damm
+LDFLAGS =
+LDLIBS = 
 TEST_LDFLAGS = 
 TEST_LDLIBS =
 
